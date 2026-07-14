@@ -1,0 +1,56 @@
+# Central config for the whole pipeline. Every script reads this file so the
+# model/dataset/hyperparameters live in one place instead of scattered CLI flags.
+
+model:
+  # Stand-in for Mistral-7B: same causal-LM / LoRA code path, but small enough
+  # to actually fine-tune on a 16GB Apple Silicon machine (no CUDA GPU).
+  # To target the real resume claim on a CUDA box, swap this to
+  # "mistralai/Mistral-7B-v0.1" and set quantization.load_in_4bit: true below.
+  base_model_id: "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+
+quantization:
+  load_in_4bit: false   # bitsandbytes 4-bit only works on CUDA; leave off for MPS/CPU
+
+dataset:
+  hf_dataset_id: "virattt/financial-qa-10K"   # Q&A pairs generated from real SEC 10-K filings
+  train_fraction: 0.9
+  max_train_examples: 1200   # cap for demo-speed training; set to null to use all ~6300 train rows
+  max_eval_examples: 40
+  max_seq_length: 384
+  seed: 42
+  prepared_dir: "data/prepared"
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
+  bias: "none"
+
+training:
+  output_dir: "artifacts/lora-adapter"
+  num_train_epochs: 1
+  max_steps: 150          # cap for demo speed; raise/remove for a longer real run
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 4
+  learning_rate: 2.0e-4
+  warmup_ratio: 0.03
+  logging_steps: 5
+  save_steps: 150
+  weight_decay: 0.0
+  seed: 42
+
+evaluation:
+  max_new_tokens: 128
+  report_path: "artifacts/eval_report.json"
+  predictions_path: "artifacts/eval_predictions.jsonl"
+
+serving:
+  host: "127.0.0.1"   # localhost-only by default; use 0.0.0.0 deliberately to expose on the network
+  port: 8000
+  adapter_path: "artifacts/lora-adapter"
+  log_db_path: "logs/requests.db"
+  max_new_tokens: 200
+
+monitoring:
+  db_path: "logs/requests.db"
