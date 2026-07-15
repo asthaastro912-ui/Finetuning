@@ -36,6 +36,8 @@ def load_eval_examples(cfg):
 
 def generate(model, tokenizer, prompt: str, device: str, max_new_tokens: int) -> tuple:
     inputs = tokenizer(prompt, return_tensors="pt").to(device)
+    ## tokenizer gives us a token id 
+    ## this token id is used to fetch the embedding vector from embedding space (embedding vector is fixed)
     start = time.time()
     with torch.no_grad():
         out = model.generate(
@@ -50,6 +52,10 @@ def generate(model, tokenizer, prompt: str, device: str, max_new_tokens: int) ->
     completion = tokenizer.decode(out[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
     return completion.strip(), latency_ms
 
+## tokenizer → integer token ID → row-index into a fixed 32,000×2048 table (pretrained, frozen during our
+#  fine-tuning) → a 2048-dim vector → that vector flows through the transformer's attention layers (where
+#  LoRA's small trainable matrices live, inside q_proj/k_proj/v_proj/o_proj) → becomes contextualized 
+# → eventually mapped back to vocabulary probabilities to pick the next token.
 
 def run_model(model_id, adapter_path, examples, device, max_new_tokens, label):
     print(f"\n=== Generating with {label} ===")
@@ -60,8 +66,17 @@ def run_model(model_id, adapter_path, examples, device, max_new_tokens, label):
     if adapter_path is not None:
         model = PeftModel.from_pretrained(model, adapter_path)
         model = model.merge_and_unload()
+        # the step where we merge adapter before running (finetuned model)
     model.to(device)
     model.eval()
+
+    #model.eval() — switches the model into evaluation mode, which matters because some 
+    # layers (dropout, batch norm — though LoRA's dropout is the relevant one here) behave 
+    # differently during training vs. inference. In training mode, dropout randomly zeroes 
+    # out some activations (regularization); in eval mode, dropout is disabled so outputs 
+    # are deterministic. Forgetting model.eval() before inference is a classic bug — you'd 
+    # get inconsistent outputs across identical calls, purely because dropout is still 
+    # randomly active.
 
     results = []
     for i, ex in enumerate(examples):

@@ -19,19 +19,27 @@ from src.common import load_config, resolve_path, build_prompt
 
 def main():
     cfg = load_config()
-    ds_cfg = cfg["dataset"]
-
-    print(f"Loading {ds_cfg['hf_dataset_id']} from the Hugging Face Hub...")
+    ds_cfg = cfg["dataset"] 
+    ## ds_cfg["hf_dataset_id"] is "virattt/financial-qa-10K"
+    print(f"Loading {ds_cfg['hf_dataset_id']} from the Hugging Face Hub...") 
     raw = load_dataset(ds_cfg["hf_dataset_id"], split="train")
+    ## raw is a dataset object (lazy memory efficient table)
     print(f"Raw rows: {len(raw)} | columns: {raw.column_names}")
 
-    raw = raw.shuffle(seed=ds_cfg["seed"])
 
+    raw = raw.shuffle(seed=ds_cfg["seed"])
+    ## Why shuffle first? The raw dataset might be ordered in some way we don't 
+    # want (e.g., grouped by company or filing year) — if we just sliced the first 
+    # 90% without shuffling, our eval set could end up being "all one company" or 
+    # "all one year," which wouldn't be a fair, representative test. Shuffling with 
+    # a fixed seed=42 randomizes the order reproducibly — anyone who runs this script 
+    # gets the exact same shuffle, so results are comparable across runs/people.
     n_total = len(raw)
     n_train_pool = int(n_total * ds_cfg["train_fraction"])
     train_pool = raw.select(range(n_train_pool))
     eval_pool = raw.select(range(n_train_pool, n_total))
-
+    #the mental model of "eval is a fixed, untouched holdout region of the full dataset" 
+    # stays correct even if you later change max_train_examples to use more data.
     max_train = ds_cfg.get("max_train_examples")
     if max_train:
         train_pool = train_pool.select(range(min(max_train, len(train_pool))))
@@ -59,6 +67,14 @@ def main():
                 # on the prompt, trained only on the completion) whenever a
                 # "prompt" key is present and a matching "completion" key exists.
                 "completion": " " + row["answer"].strip(),
+                #here's a leading space before the answer. This matters because of 
+                # how tokenizers work: "$2,299,887" and " $2,299,887" can tokenize 
+                # into different token sequences (many tokenizers have "space-prefixed"
+                #  versions of common tokens). Since the prompt ends in <|assistant|>\n 
+                # with no trailing space, adding that space at the start of the completion 
+                # produces the natural token boundary the model would generate anyway — 
+                # without it, training could inadvertently teach the model a slightly 
+                # unnatural token sequence.
             })
         return records
 

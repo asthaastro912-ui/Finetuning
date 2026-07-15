@@ -36,9 +36,13 @@ def main():
 
     prepared_dir = resolve_path(ds_cfg["prepared_dir"])
     train_ds = load_dataset("json", data_files=str(prepared_dir / "train.jsonl"), split="train")
-
+    #datasets is flexible about where data comes from — Hub, local JSON/CSV/Parquet, or even 
+    # Python lists in memory — same API either way.
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     if tokenizer.pad_token is None:
+        #The fix — reuse the existing end-of-sequence (eos) token as the pad token — is the 
+        # standard workaround; the padded positions get masked out of the loss anyway, so 
+        # reusing eos causes no harm.
         tokenizer.pad_token = tokenizer.eos_token
 
     model = AutoModelForCausalLM.from_pretrained(

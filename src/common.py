@@ -11,6 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def load_config(path: str = None) -> dict:
+    ### all hyperparameters live in one file
     path = path or (REPO_ROOT / "config.yaml")
     with open(path) as f:
         return yaml.safe_load(f)
@@ -41,6 +42,8 @@ SYSTEM_PROMPT = (
 def build_prompt(question: str, context: str) -> str:
     """Instruction-style prompt shared by training, eval, and serving so the
     fine-tuned model always sees the same shape of input it was trained on."""
+    ### they match TinyLlama-Chat's specific chat format that it was originally instruction-tuned on, 
+    # so we're building on a format the model already understands rather than inventing our own.
     return (
         f"<|system|>\n{SYSTEM_PROMPT}</s>\n"
         f"<|user|>\nFiling excerpt:\n{context}\n\nQuestion: {question}</s>\n"
